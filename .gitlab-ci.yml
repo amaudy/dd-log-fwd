@@ -30,5 +30,3 @@ deploy:
   only:
     - main
     - merge_requests
-  tags:
-    - docker
