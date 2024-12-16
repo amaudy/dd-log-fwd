@@ -57,3 +57,11 @@ async def error_database_query():
 async def global_exception_handler(request, exc):
     logger.error(f"Unhandled exception: {str(exc)}")
     return {"detail": "Internal Server Error"}
+
+@app.get("/")
+def read_root():
+    return {"Hello": "World"}
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=5000)
