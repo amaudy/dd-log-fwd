@@ -94,6 +94,31 @@ resource "aws_security_group" "alb" {
   }
 }
 
+# Add Secrets Manager policy to the task execution role
+resource "aws_iam_role_policy" "secrets_access" {
+  name = "flask-echo-secrets-access"
+  role = aws_iam_role.ecs_task_execution.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "secretsmanager:GetSecretValue"
+        ]
+        Resource = [
+          "arn:aws:secretsmanager:us-east-1:${data.aws_caller_identity.current.account_id}:secret:datadog-api-key-*",
+          "arn:aws:secretsmanager:us-east-1:${data.aws_caller_identity.current.account_id}:secret:datadog-app-key-*"
+        ]
+      }
+    ]
+  })
+}
+
+# Get current AWS account ID
+data "aws_caller_identity" "current" {}
+
 # Update container port mapping and task definition
 resource "aws_ecs_task_definition" "flask_echo" {
   family                   = "flask-echo"
@@ -101,8 +126,8 @@ resource "aws_ecs_task_definition" "flask_echo" {
   network_mode            = "awsvpc"
   cpu                     = 256
   memory                  = 512
-  execution_role_arn      = aws_iam_role.ecs_task_execution.arn  # Add execution role ARN
-  
+  execution_role_arn      = aws_iam_role.ecs_task_execution.arn
+
   container_definitions = jsonencode([
     {
       name  = "flask-echo"
@@ -130,6 +155,59 @@ resource "aws_ecs_task_definition" "flask_echo" {
           "awslogs-group"         = aws_cloudwatch_log_group.flask_echo.name
           "awslogs-region"        = "us-east-1"
           "awslogs-stream-prefix" = "ecs"
+        }
+      }
+    },
+    {
+      name  = "datadog-agent"
+      image = "public.ecr.aws/datadog/agent:latest"
+      essential = false
+
+      environment = [
+        {
+          name  = "DD_LOGS_ENABLED"
+          value = "true"
+        },
+        {
+          name  = "DD_LOGS_CONFIG_CONTAINER_COLLECT_ALL"
+          value = "true"
+        },
+        {
+          name  = "DD_AC_EXCLUDE"
+          value = "name:datadog-agent"
+        },
+        {
+          name  = "ECS_FARGATE"
+          value = "true"
+        },
+        {
+          name  = "DD_SITE"
+          value = "datadoghq.com"
+        },
+        {
+          name  = "DD_SERVICE"
+          value = "flask-echo"
+        },
+        {
+          name  = "DD_ENV"
+          value = "production"
+        }
+      ]
+
+      # Add secrets from AWS Secrets Manager
+      secrets = [
+        {
+          name      = "DD_API_KEY"
+          valueFrom = "arn:aws:secretsmanager:us-east-1:${data.aws_caller_identity.current.account_id}:secret:datadog-api-key"
+        }
+      ]
+
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          "awslogs-group"         = aws_cloudwatch_log_group.flask_echo.name
+          "awslogs-region"        = "us-east-1"
+          "awslogs-stream-prefix" = "datadog"
         }
       }
     }
