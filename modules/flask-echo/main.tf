@@ -251,6 +251,26 @@ resource "aws_ecs_task_definition" "flask_echo" {
         {
           name  = "DD_CLUSTER_NAME"
           value = "flask-echo-cluster"
+        },
+        {
+          name  = "DD_PROCESS_AGENT_ENABLED"
+          value = "true"
+        },
+        {
+          name  = "DD_DOGSTATSD_NON_LOCAL_TRAFFIC"
+          value = "true"
+        },
+        {
+          name  = "DD_APM_NON_LOCAL_TRAFFIC"
+          value = "true"
+        },
+        {
+          name  = "DD_LOGS_CONFIG_CONTAINER_COLLECT_ALL"
+          value = "true"
+        },
+        {
+          name  = "DD_CONTAINER_EXCLUDE_LOGS"
+          value = "name:datadog-agent"
         }
       ]
 
@@ -286,12 +306,25 @@ resource "aws_security_group" "flask_echo" {
     protocol        = "tcp"
     security_groups = [aws_security_group.alb.id]
   }
+
+  # Add ingress rule for Datadog agent
+  ingress {
+    from_port       = 8126
+    to_port         = 8126
+    protocol        = "tcp"
+    self            = true
+    description     = "Datadog trace agent"
+  }
   
   egress {
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = "flask-echo-sg"
   }
 }
 
