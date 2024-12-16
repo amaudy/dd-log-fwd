@@ -28,6 +28,73 @@ resource "aws_cloudwatch_log_group" "flask_echo" {
   retention_in_days = 30
 }
 
+# Create ALB
+resource "aws_lb" "flask_echo" {
+  name               = "flask-echo-alb"
+  internal           = false
+  load_balancer_type = "application"
+  security_groups    = [aws_security_group.alb.id]
+  subnets            = var.public_subnet_ids
+
+  tags = {
+    Name = "flask-echo-alb"
+  }
+}
+
+# Create ALB target group
+resource "aws_lb_target_group" "flask_echo" {
+  name        = "flask-echo-tg"
+  port        = 5000
+  protocol    = "HTTP"
+  vpc_id      = var.vpc_id
+  target_type = "ip"
+
+  health_check {
+    enabled             = true
+    healthy_threshold   = 2
+    interval            = 30
+    matcher            = "200"
+    path               = "/"
+    port               = "traffic-port"
+    timeout            = 5
+    unhealthy_threshold = 3
+  }
+}
+
+# Create ALB listener
+resource "aws_lb_listener" "flask_echo" {
+  load_balancer_arn = aws_lb.flask_echo.arn
+  port              = 80
+  protocol          = "HTTP"
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.flask_echo.arn
+  }
+}
+
+# Create security group for ALB
+resource "aws_security_group" "alb" {
+  name        = "flask-echo-alb-sg"
+  description = "Security group for Flask Echo ALB"
+  vpc_id      = var.vpc_id
+
+  ingress {
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+# Update container port mapping and task definition
 resource "aws_ecs_task_definition" "flask_echo" {
   family                   = "flask-echo"
   requires_compatibilities = ["FARGATE"]
@@ -43,8 +110,8 @@ resource "aws_ecs_task_definition" "flask_echo" {
       
       portMappings = [
         {
-          containerPort = 80
-          hostPort      = 80
+          containerPort = 5000
+          hostPort      = 5000
           protocol      = "tcp"
         }
       ]
@@ -69,6 +136,28 @@ resource "aws_ecs_task_definition" "flask_echo" {
   ])
 }
 
+# Update security group for ECS tasks
+resource "aws_security_group" "flask_echo" {
+  name        = "flask-echo-sg"
+  description = "Security group for Flask Echo service"
+  vpc_id      = var.vpc_id
+  
+  ingress {
+    from_port       = 5000
+    to_port         = 5000
+    protocol        = "tcp"
+    security_groups = [aws_security_group.alb.id]
+  }
+  
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+# Update ECS service to use ALB
 resource "aws_ecs_service" "flask_echo" {
   name            = "flask-echo"
   cluster         = var.cluster_id
@@ -80,24 +169,10 @@ resource "aws_ecs_service" "flask_echo" {
     subnets         = var.private_subnet_ids
     security_groups = [aws_security_group.flask_echo.id]
   }
-}
 
-resource "aws_security_group" "flask_echo" {
-  name        = "flask-echo-sg"
-  description = "Security group for Flask Echo service"
-  vpc_id      = var.vpc_id
-  
-  ingress {
-    from_port   = 80
-    to_port     = 80
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-  
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
+  load_balancer {
+    target_group_arn = aws_lb_target_group.flask_echo.arn
+    container_name   = "flask-echo"
+    container_port   = 5000
   }
 } 

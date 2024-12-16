@@ -25,5 +25,6 @@ module "flask-echo" {
   cluster_id         = module.ecs.cluster_id
   vpc_id             = module.vpc.vpc_id
   private_subnet_ids = module.vpc.private_subnet_ids
+  public_subnet_ids  = module.vpc.public_subnet_ids
   container_image    = "thatthep/flask-echo:main"
 } 
