@@ -5,10 +5,10 @@ variables:
   IMAGE_TAG: $CI_COMMIT_SHA
 
 stages:
-  - deploy
+  - build
 
-deploy:
-  stage: deploy
+build_release:
+  stage: build
   image: docker:20.10.16
   services:
     - docker:20.10.16-dind
