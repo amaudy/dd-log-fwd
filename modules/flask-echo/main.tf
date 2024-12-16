@@ -278,7 +278,8 @@ resource "aws_ecs_task_definition" "flask_echo" {
       secrets = [
         {
           name      = "DD_API_KEY"
-          valueFrom = "arn:aws:secretsmanager:us-east-1:${data.aws_caller_identity.current.account_id}:secret:datadog-api-key"
+        #   valueFrom = "arn:aws:secretsmanager:us-east-1:${data.aws_caller_identity.current.account_id}:secret:datadog-api-key"
+          valueFrom = "arn:aws:secretsmanager:us-east-1:058264373862:secret:datadog-api-key-f491aP"
         }
       ]
 
