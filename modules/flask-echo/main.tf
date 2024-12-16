@@ -119,6 +119,49 @@ resource "aws_iam_role_policy" "secrets_access" {
 # Get current AWS account ID
 data "aws_caller_identity" "current" {}
 
+# Create IAM role for ECS tasks (Datadog permissions)
+resource "aws_iam_role" "ecs_task_role" {
+  name = "flask-echo-task-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "ecs-tasks.amazonaws.com"
+        }
+      }
+    ]
+  })
+}
+
+# Add ECS permissions for Datadog agent
+resource "aws_iam_role_policy" "datadog_permissions" {
+  name = "flask-echo-datadog-permissions"
+  role = aws_iam_role.ecs_task_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "ecs:ListClusters",
+          "ecs:ListContainerInstances",
+          "ecs:DescribeContainerInstances",
+          "ecs:ListServices",
+          "ecs:DescribeServices",
+          "ecs:ListTasks",
+          "ecs:DescribeTasks"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
 # Update container port mapping and task definition
 resource "aws_ecs_task_definition" "flask_echo" {
   family                   = "flask-echo"
@@ -127,6 +170,7 @@ resource "aws_ecs_task_definition" "flask_echo" {
   cpu                     = 256
   memory                  = 512
   execution_role_arn      = aws_iam_role.ecs_task_execution.arn
+  task_role_arn           = aws_iam_role.ecs_task_role.arn
 
   container_definitions = jsonencode([
     {
@@ -191,6 +235,22 @@ resource "aws_ecs_task_definition" "flask_echo" {
         {
           name  = "DD_ENV"
           value = "production"
+        },
+        {
+          name  = "DD_ECS_COLLECT_RESOURCE_TAGS_EC2"
+          value = "true"
+        },
+        {
+          name  = "DD_ECS_COLLECT_RESOURCE_TAGS_ECS"
+          value = "true"
+        },
+        {
+          name  = "DD_ECS_FARGATE"
+          value = "true"
+        },
+        {
+          name  = "DD_CLUSTER_NAME"
+          value = "flask-echo-cluster"
         }
       ]
 
