@@ -44,7 +44,7 @@ resource "aws_s3_bucket" "alb_logs" {
 resource "aws_s3_bucket_versioning" "alb_logs" {
   bucket = aws_s3_bucket.alb_logs.id
   versioning_configuration {
-    status = "Enabled"
+    status = "Suspended"
   }
 }
 
