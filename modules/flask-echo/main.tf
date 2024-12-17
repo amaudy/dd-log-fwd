@@ -28,6 +28,45 @@ resource "aws_cloudwatch_log_group" "flask_echo" {
   retention_in_days = 30
 }
 
+# Create CloudWatch Log Group for ALB logs
+resource "aws_cloudwatch_log_group" "alb_logs" {
+  name              = "/aws/alb/flask-echo"
+  retention_in_days = 30
+}
+
+# Create S3 bucket for ALB logs
+resource "aws_s3_bucket" "alb_logs" {
+  bucket        = "flask-echo-alb-logs-${data.aws_caller_identity.current.account_id}"
+  force_destroy = true
+}
+
+# Enable versioning for ALB logs bucket
+resource "aws_s3_bucket_versioning" "alb_logs" {
+  bucket = aws_s3_bucket.alb_logs.id
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+# Create bucket policy for ALB logging
+resource "aws_s3_bucket_policy" "alb_logs" {
+  bucket = aws_s3_bucket.alb_logs.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Principal = {
+          AWS = "arn:aws:iam::127311923021:root"  # ALB service account for us-east-1
+        }
+        Action = "s3:PutObject"
+        Resource = "${aws_s3_bucket.alb_logs.arn}/*"
+      }
+    ]
+  })
+}
+
 # Create ALB
 resource "aws_lb" "flask_echo" {
   name               = "flask-echo-alb"
@@ -35,6 +74,12 @@ resource "aws_lb" "flask_echo" {
   load_balancer_type = "application"
   security_groups    = [aws_security_group.alb.id]
   subnets            = var.public_subnet_ids
+
+  access_logs {
+    bucket  = aws_s3_bucket.alb_logs.id
+    prefix  = "alb-logs"
+    enabled = true
+  }
 
   tags = {
     Name = "flask-echo-alb"
@@ -75,7 +120,7 @@ resource "aws_lb_listener" "flask_echo" {
 
 # Create security group for ALB
 resource "aws_security_group" "alb" {
-  name        = "flask-echo-alb-sg"
+  name        = "flask-echo-alb-sg-${formatdate("YYYYMMDDHHmm", timestamp())}"
   description = "Security group for Flask Echo ALB"
   vpc_id      = var.vpc_id
 
@@ -91,6 +136,10 @@ resource "aws_security_group" "alb" {
     to_port     = 0
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  lifecycle {
+    create_before_destroy = true
   }
 }
 
@@ -302,6 +351,14 @@ resource "aws_ecs_task_definition" "flask_echo" {
         {
           name  = "DD_CONTAINER_EXCLUDE_LOGS"
           value = "name:datadog-agent"
+        },
+        {
+          name  = "DD_LOGS_CONFIG_ALB_LOGS_ENABLED"
+          value = "true"
+        },
+        {
+          name  = "DD_LOGS_CONFIG_ALB_LOG_GROUP"
+          value = aws_cloudwatch_log_group.alb_logs.name
         }
       ]
 
@@ -327,8 +384,8 @@ resource "aws_ecs_task_definition" "flask_echo" {
 }
 
 # Update security group for ECS tasks
-resource "aws_security_group" "flask_echo" {
-  name        = "flask-echo-sg"
+resource "aws_security_group" "ecs_tasks" {
+  name        = "flask-echo-sg-${formatdate("YYYYMMDDHHmm", timestamp())}"
   description = "Security group for Flask Echo service"
   vpc_id      = var.vpc_id
   
@@ -358,6 +415,10 @@ resource "aws_security_group" "flask_echo" {
   tags = {
     Name = "flask-echo-sg"
   }
+
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
 # Update ECS service to use ALB
@@ -370,12 +431,45 @@ resource "aws_ecs_service" "flask_echo" {
   
   network_configuration {
     subnets         = var.private_subnet_ids
-    security_groups = [aws_security_group.flask_echo.id]
+    security_groups = [aws_security_group.ecs_tasks.id]
   }
+
+  depends_on = [aws_lb_listener.flask_echo]
 
   load_balancer {
     target_group_arn = aws_lb_target_group.flask_echo.arn
     container_name   = "flask-echo"
     container_port   = 5000
   }
+}
+
+# Update CloudWatch Logs permissions for Datadog task role
+resource "aws_iam_role_policy" "datadog_cloudwatch" {
+  name = "datadog-cloudwatch-access"
+  role = aws_iam_role.ecs_task_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "cloudwatch:ListMetrics",
+          "cloudwatch:GetMetricStatistics",
+          "cloudwatch:GetMetricData",
+          "logs:DescribeLogGroups",
+          "logs:DescribeLogStreams",
+          "logs:GetLogEvents",
+          "logs:FilterLogEvents"
+        ]
+        Resource = [
+          # Add permissions for both ALB and ECS logs
+          aws_cloudwatch_log_group.alb_logs.arn,
+          "${aws_cloudwatch_log_group.alb_logs.arn}:*",
+          aws_cloudwatch_log_group.flask_echo.arn,
+          "${aws_cloudwatch_log_group.flask_echo.arn}:*"
+        ]
+      }
+    ]
+  })
 } 
