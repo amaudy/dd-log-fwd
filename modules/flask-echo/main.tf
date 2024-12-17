@@ -34,39 +34,6 @@ resource "aws_cloudwatch_log_group" "alb_logs" {
   retention_in_days = 30
 }
 
-# Create S3 bucket for ALB logs
-resource "aws_s3_bucket" "alb_logs" {
-  bucket        = "flask-echo-alb-logs-${data.aws_caller_identity.current.account_id}"
-  force_destroy = true
-}
-
-# Enable versioning for ALB logs bucket
-resource "aws_s3_bucket_versioning" "alb_logs" {
-  bucket = aws_s3_bucket.alb_logs.id
-  versioning_configuration {
-    status = "Suspended"
-  }
-}
-
-# Create bucket policy for ALB logging
-resource "aws_s3_bucket_policy" "alb_logs" {
-  bucket = aws_s3_bucket.alb_logs.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Effect = "Allow"
-        Principal = {
-          AWS = "arn:aws:iam::127311923021:root"  # ALB service account for us-east-1
-        }
-        Action = "s3:PutObject"
-        Resource = "${aws_s3_bucket.alb_logs.arn}/*"
-      }
-    ]
-  })
-}
-
 # Create ALB
 resource "aws_lb" "flask_echo" {
   name               = "flask-echo-alb"
@@ -74,12 +41,6 @@ resource "aws_lb" "flask_echo" {
   load_balancer_type = "application"
   security_groups    = [aws_security_group.alb.id]
   subnets            = var.public_subnet_ids
-
-  access_logs {
-    bucket  = aws_s3_bucket.alb_logs.id
-    prefix  = "alb-logs"
-    enabled = true
-  }
 
   tags = {
     Name = "flask-echo-alb"
@@ -472,4 +433,109 @@ resource "aws_iam_role_policy" "datadog_cloudwatch" {
       }
     ]
   })
+}
+
+# Create IAM role for Lambda
+resource "aws_iam_role" "lambda_datadog_forwarder" {
+  name = "lambda-datadog-forwarder-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "lambda.amazonaws.com"
+        }
+      }
+    ]
+  })
+}
+
+# Add permissions for Lambda to read from S3 and write to CloudWatch Logs
+resource "aws_iam_role_policy" "lambda_datadog_forwarder" {
+  name = "lambda-datadog-forwarder-policy"
+  role = aws_iam_role.lambda_datadog_forwarder.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "logs:CreateLogGroup",
+          "logs:CreateLogStream",
+          "logs:PutLogEvents"
+        ]
+        Resource = "arn:aws:logs:*:*:*"
+      }
+    ]
+  })
+}
+
+# Create Lambda deployment package
+data "archive_file" "lambda_package" {
+  type        = "zip"
+  source_file = "${path.module}/lambda/main.py"
+  output_path = "${path.module}/lambda/function.zip"
+}
+
+# Create Lambda function using Datadog's forwarder
+resource "aws_lambda_function" "datadog_forwarder" {
+  filename         = "${path.module}/lambda/function.zip"
+  function_name    = "datadog-forwarder"
+  role            = aws_iam_role.lambda_datadog_forwarder.arn
+  handler         = "main.lambda_handler"
+  runtime         = "python3.8"
+  timeout         = 120
+  memory_size     = 1024
+
+  environment {
+    variables = {
+      DD_API_KEY = data.aws_secretsmanager_secret_version.datadog_api_key.secret_string
+      DD_SITE    = "datadoghq.com"
+      DD_TAGS    = "env:production,service:flask-echo"
+    }
+  }
+
+  source_code_hash = data.archive_file.lambda_package.output_base64sha256
+}
+
+# Create CloudWatch Log subscription for ALB logs
+resource "aws_cloudwatch_log_subscription_filter" "datadog_alb" {
+  name            = "datadog-alb-logs"
+  log_group_name  = aws_cloudwatch_log_group.alb_logs.name
+  filter_pattern  = ""
+  destination_arn = aws_lambda_function.datadog_forwarder.arn
+}
+
+# Create CloudWatch Log subscription for ECS logs
+resource "aws_cloudwatch_log_subscription_filter" "datadog_ecs" {
+  name            = "datadog-ecs-logs"
+  log_group_name  = aws_cloudwatch_log_group.flask_echo.name
+  filter_pattern  = ""
+  destination_arn = aws_lambda_function.datadog_forwarder.arn
+}
+
+# Update Lambda permissions to allow CloudWatch
+resource "aws_lambda_permission" "cloudwatch_alb" {
+  statement_id  = "AllowCloudWatchALB"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.datadog_forwarder.function_name
+  principal     = "logs.amazonaws.com"
+  source_arn    = "${aws_cloudwatch_log_group.alb_logs.arn}:*"
+}
+
+resource "aws_lambda_permission" "cloudwatch_ecs" {
+  statement_id  = "AllowCloudWatchECS"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.datadog_forwarder.function_name
+  principal     = "logs.amazonaws.com"
+  source_arn    = "${aws_cloudwatch_log_group.flask_echo.arn}:*"
+}
+
+# Get Datadog API key from Secrets Manager
+data "aws_secretsmanager_secret_version" "datadog_api_key" {
+  secret_id = "datadog-api-key"
 } 
