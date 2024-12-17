@@ -1,8 +1,9 @@
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, HTTPException, status, Response
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import SQLAlchemyError
 import logging
 from ddtrace import patch_all
+from typing import Dict
 
 # Initialize tracing before other imports
 patch_all()
@@ -20,6 +21,44 @@ logger = logging.getLogger(__name__)
 # Mock database connection
 DB_URL = "sqlite:///./test.db"
 engine = create_engine(DB_URL)
+
+# Define status code mappings
+STATUS_CODES: Dict[int, str] = {
+    200: "OK",
+    201: "Created",
+    204: "No Content",
+    301: "Moved Permanently",
+    302: "Found",
+    304: "Not Modified",
+    400: "Bad Request",
+    401: "Unauthorized",
+    403: "Forbidden",
+    404: "Not Found",
+    405: "Method Not Allowed",
+    408: "Request Timeout",
+    409: "Conflict",
+    429: "Too Many Requests",
+    500: "Internal Server Error",
+    501: "Not Implemented",
+    502: "Bad Gateway",
+    503: "Service Unavailable",
+    504: "Gateway Timeout"
+}
+
+@app.get("/{code}")
+async def get_status_code(code: int):
+    """Return specific status code with its description"""
+    if code not in STATUS_CODES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid status code: {code}"
+        )
+    
+    return Response(
+        content=f"Status Code: {code}\nDetail: {STATUS_CODES[code]}",
+        status_code=code,
+        media_type="text/plain"
+    )
 
 @app.get("/health")
 async def health_check():
