@@ -162,6 +162,37 @@ resource "aws_iam_role_policy" "datadog_permissions" {
   })
 }
 
+# Add ECR pull permissions to the task execution role
+resource "aws_iam_role_policy" "ecr_access" {
+  name = "flask-echo-ecr-access"
+  role = aws_iam_role.ecs_task_execution.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "ecr:GetAuthorizationToken",
+          "ecr:BatchCheckLayerAvailability",
+          "ecr:GetDownloadUrlForLayer",
+          "ecr:BatchGetImage"
+        ]
+        Resource = [
+          "arn:aws:ecr:us-east-1:058264373862:repository/generic/repo"
+        ]
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "ecr:GetAuthorizationToken"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
 # Update container port mapping and task definition
 resource "aws_ecs_task_definition" "flask_echo" {
   family                   = "flask-echo"
