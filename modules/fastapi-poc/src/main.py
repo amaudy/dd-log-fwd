@@ -61,13 +61,22 @@ async def get_status_code(code: int):
         media_type="text/plain"
     )
 
-@app.get("/health")
+@app.get("/health", status_code=200)
 async def get_health():
-    return Response(
-        content=f"Status Code: 200\nDetail: ok",
-        status_code=200,
-        media_type="text/plain"
-    )
+    try:
+        # You could add actual health checks here (e.g., DB connection)
+        return Response(
+            content="OK",  # Simpler response
+            status_code=200,
+            media_type="text/plain"
+        )
+    except Exception as e:
+        logger.error(f"Health check failed: {str(e)}")
+        return Response(
+            content="Service Unavailable",
+            status_code=503,
+            media_type="text/plain"
+        )
 
 @app.get("/error-500")
 async def error_500():
