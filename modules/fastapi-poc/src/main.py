@@ -2,6 +2,10 @@ from fastapi import FastAPI, HTTPException, status
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import SQLAlchemyError
 import logging
+from ddtrace import patch_all
+
+# Initialize tracing before other imports
+patch_all()
 
 # Initialize FastAPI app
 app = FastAPI()
@@ -52,15 +56,15 @@ async def error_database_query():
             detail=f"Database error: {str(e)}"
         )
 
+@app.get("/")
+def read_root():
+    return {"Hello": "World"}
+
 # Error handler for uncaught exceptions
 @app.exception_handler(Exception)
 async def global_exception_handler(request, exc):
     logger.error(f"Unhandled exception: {str(exc)}")
     return {"detail": "Internal Server Error"}
-
-@app.get("/")
-def read_root():
-    return {"Hello": "World"}
 
 if __name__ == "__main__":
     import uvicorn

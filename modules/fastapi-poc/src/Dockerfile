@@ -9,6 +9,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
+ENV DD_SERVICE="fastapi-poc"
+ENV DD_ENV="production"
+
 EXPOSE 5000
 
 CMD ["python", "main.py"]
