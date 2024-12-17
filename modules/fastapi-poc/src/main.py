@@ -62,14 +62,8 @@ async def get_status_code(code: int):
     )
 
 @app.get("/health")
-async def health_check():
-    """
-    Simple health check endpoint that returns 200 OK
-    """
-    return JSONResponse(
-        status_code=status.HTTP_200_OK,
-        content={"status": "healthy"}
-    )
+def health_check():
+    return {"status": "healthy"}
 
 @app.get("/error-500")
 async def error_500():
