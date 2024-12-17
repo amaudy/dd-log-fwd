@@ -248,6 +248,19 @@ resource "aws_ecs_task_definition" "flask_echo" {
       image = "public.ecr.aws/datadog/agent:latest"
       essential = false
 
+      portMappings = [
+        {
+          containerPort = 8126
+          hostPort      = 8126
+          protocol      = "tcp"
+        },
+        {
+          containerPort = 8125
+          hostPort      = 8125
+          protocol      = "udp"
+        }
+      ]
+
       environment = [
         {
           name  = "DD_LOGS_ENABLED"
@@ -320,6 +333,14 @@ resource "aws_ecs_task_definition" "flask_echo" {
         {
           name  = "DD_LOGS_CONFIG_ALB_LOG_GROUP"
           value = aws_cloudwatch_log_group.alb_logs.name
+        },
+        {
+          name  = "DD_APM_ENABLED"
+          value = "true"
+        },
+        {
+          name  = "DD_APM_PORT"
+          value = "8126"
         }
       ]
 
@@ -364,6 +385,14 @@ resource "aws_security_group" "ecs_tasks" {
     protocol        = "tcp"
     self            = true
     description     = "Datadog trace agent"
+  }
+
+  ingress {
+    from_port       = 8125
+    to_port         = 8125
+    protocol        = "udp"
+    self            = true
+    description     = "Datadog DogStatsD"
   }
   
   egress {
