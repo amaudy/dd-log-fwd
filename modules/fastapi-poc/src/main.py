@@ -62,8 +62,12 @@ async def get_status_code(code: int):
     )
 
 @app.get("/health")
-def health_check():
-    return {"status": "healthy"}
+async def get_health():
+    return Response(
+        content=f"Status Code: 200\nDetail: ok",
+        status_code=200,
+        media_type="text/plain"
+    )
 
 @app.get("/error-500")
 async def error_500():
