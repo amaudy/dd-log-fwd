@@ -2,7 +2,7 @@ variables:
   AWS_REGION: us-east-1
   ECR_REGISTRY: 058264373862.dkr.ecr.us-east-1.amazonaws.com
   ECR_REPOSITORY: generic/repo
-  IMAGE_TAG: $CI_COMMIT_SHA
+  IMAGE_TAG: $CI_COMMIT_SHORT_SHA
 
 stages:
   - build
