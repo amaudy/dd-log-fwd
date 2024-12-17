@@ -4,6 +4,7 @@ from sqlalchemy.exc import SQLAlchemyError
 import logging
 from ddtrace import patch_all
 from typing import Dict
+from fastapi.responses import JSONResponse
 
 # Initialize tracing before other imports
 patch_all()
@@ -62,8 +63,13 @@ async def get_status_code(code: int):
 
 @app.get("/health")
 async def health_check():
-    logger.info("Health check endpoint called")
-    return {"status": "healthy"}
+    """
+    Simple health check endpoint that returns 200 OK
+    """
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content={"status": "healthy"}
+    )
 
 @app.get("/error-500")
 async def error_500():
