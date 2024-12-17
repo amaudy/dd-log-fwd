@@ -227,7 +227,7 @@ resource "aws_ecs_task_definition" "flask_echo" {
       ]
       
       healthCheck = {
-        command     = ["CMD-SHELL", "curl -f -s -w '%{http_code}' http://localhost:5000/health | grep -q 200 || exit 1"]
+        command     = ["CMD-SHELL", "curl -f -s -w '%%{http_code}' http://localhost:5000/health | grep -q 200 || exit 1"]
         interval    = 30
         timeout     = 5
         retries     = 3

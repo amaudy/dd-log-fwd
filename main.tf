@@ -26,5 +26,5 @@ module "flask-echo" {
   vpc_id             = module.vpc.vpc_id
   private_subnet_ids = module.vpc.private_subnet_ids
   public_subnet_ids  = module.vpc.public_subnet_ids
-  container_image    = "058264373862.dkr.ecr.us-east-1.amazonaws.com/generic/repo:4c471f36"
+  container_image    = "058264373862.dkr.ecr.us-east-1.amazonaws.com/generic/repo:bee14bcd"
 } 
