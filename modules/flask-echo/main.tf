@@ -567,4 +567,19 @@ resource "aws_lambda_permission" "cloudwatch_ecs" {
 # Get Datadog API key from Secrets Manager
 data "aws_secretsmanager_secret_version" "datadog_api_key" {
   secret_id = "datadog-api-key"
+}
+
+module "datadog_logs" {
+  source = "../datadog-log-forwarder"
+
+  name_prefix     = "flask-echo"
+  aws_region      = "us-east-1"
+  aws_account_id  = data.aws_caller_identity.current.account_id
+  datadog_api_key = data.aws_secretsmanager_secret_version.datadog_api_key.secret_string
+  datadog_tags    = "env:production,service:flask-echo"
+  
+  log_group_names = [
+    aws_cloudwatch_log_group.alb_logs.name,
+    aws_cloudwatch_log_group.flask_echo.name
+  ]
 } 
